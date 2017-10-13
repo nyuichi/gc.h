@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include "gc.h"
 
+struct gc_state gc;
+
 struct list {
     int value;
     struct list *next;
@@ -35,30 +37,36 @@ struct list *cons(int value, struct list *next) {
 
 struct list *e;
 
+#define with_gc_scope(s) for (; (s) == gc.scope ? (gc_scope_close(), 0) : (gc_scope_open(s), 1); )
+
 struct list *doit(void) {
-    gc_scope_t s = gc_scope_open();
+    struct list *a, *b, *c, *d;
+    struct gc_scope s;
 
-    struct list *a = cons(1, NULL);
-    struct list *b = cons(2, NULL);
-    struct list *c = cons(3, NULL);
-    struct list *d = cons(4, a);
-    e = cons(5, NULL);
-    gc_pin(&e->head);
+    gc_scope_open(&s);
+    {
+        a = cons(1, NULL);
+        b = cons(2, NULL);
+        c = cons(3, NULL);
+        d = cons(4, a);
+        e = cons(5, NULL);
+        gc_pin(&e->head);
 
-    gc_run();
-    puts("0 objects must be released");
-    
-    gc_scope_close(s);
-    gc_protect(&d->head);
+        gc_run();
+        puts("0 objects must be released");
+
+        gc_protect(&d->head);
+    }
+    gc_scope_close();
     return d;
 }
 
 int main() {
+    struct gc_scope s;
+
     gc_init();
 
-    {
-        gc_scope_t s = gc_scope_open();
-
+    with_gc_scope(&s) {
         struct list *list = doit();
 
         gc_run();
@@ -68,14 +76,12 @@ int main() {
 
         gc_run();
         puts("1 object must be released");
-
-        gc_scope_close(s);
     }
 
     gc_run();
     puts("1 object must be released");
 
-    gc_unpin(&e->head);
+    gc_release(&e->head);
 
     gc_run();
     puts("1 object must be released");

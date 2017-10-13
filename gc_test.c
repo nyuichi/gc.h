@@ -33,6 +33,8 @@ struct list *cons(int value, struct list *next) {
     return list;
 }
 
+struct list *e;
+
 struct list *doit(void) {
     gc_scope_t s = gc_scope_open();
 
@@ -40,6 +42,8 @@ struct list *doit(void) {
     struct list *b = cons(2, NULL);
     struct list *c = cons(3, NULL);
     struct list *d = cons(4, a);
+    e = cons(5, NULL);
+    gc_pin(&e->head);
 
     gc_run();
     puts("0 objects must be released");
@@ -67,6 +71,11 @@ int main() {
 
         gc_scope_close(s);
     }
+
+    gc_run();
+    puts("1 object must be released");
+
+    gc_unpin(&e->head);
 
     gc_run();
     puts("1 object must be released");

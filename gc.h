@@ -16,6 +16,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 struct gc_state {
     struct list_head spaces[2];
+    struct list_head global;
     struct gc_head *stack;
     char from;
 } gc;
@@ -36,6 +37,7 @@ struct gc_object_type {
 static inline void gc_init(void) {
     INIT_LIST_HEAD(&gc.spaces[0]);
     INIT_LIST_HEAD(&gc.spaces[1]);
+    INIT_LIST_HEAD(&gc.global);
     gc.stack = NULL;
     gc.from = 0;
 }
@@ -55,6 +57,16 @@ static inline void gc_protect(struct gc_head *head) {
     gc.stack = head;
 }
 
+static inline void gc_pin(struct gc_head *head) {
+    list_move(&head->head, &gc.global);
+    head->stack_next = (struct gc_head *) ((unsigned long) head->stack_next | 1);
+}
+
+static inline void gc_unpin(struct gc_head *head) {
+    list_move(&head->head, &gc.spaces[gc.from]);
+    head->stack_next = (struct gc_head *) ((unsigned long) head->stack_next & ~1ul);
+}
+
 static inline void INIT_GC_HEAD(struct gc_head *head, const struct gc_object_type *type) {
     head->type = type;
     list_add(&head->head, &gc.spaces[gc.from]);
@@ -71,6 +83,10 @@ static inline void gc_mark(struct gc_head *head) {
 static inline void gc_run(void) {
     struct gc_head *head, *n;
     /* copy live objects */
+    list_for_each_entry (head, &gc.global, head) {
+        if (head->type->mark)
+            head->type->mark(head);
+    }
     for (head = gc.stack; head != NULL; head = (struct gc_head *) ((unsigned long) head->stack_next & ~1ul)) {
         gc_mark(head);
     }

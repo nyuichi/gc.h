@@ -70,7 +70,23 @@ static inline bool stack_empty(struct stack_head *stack) {
 #define stack_for_each_entry(p,stack,field) \
     for (p = stack_entry((stack)->next, typeof(*p), field); &p->field; p = stack_entry(p->field.next, typeof(*p), field))
 
+#define stack_for_each_entry_safe(p,n,stack,field) \
+    for (p = stack_entry((stack)->next, typeof(*p), field), \
+         n = &p->field ? stack_entry(p->field.next, typeof(*n), field) : NULL; \
+         &p->field; p = n, n = &p->field ? stack_entry(p->field.next, typeof(*n), field) : NULL)
+
 #define stack_for_each_stack(p,stack) \
     for (p = (stack); p->next; p = p->next)
+
+#define STACK_HEAD(name) struct stack_head name = { NULL }
+
+static inline void stack_move(struct stack_head *stack, struct stack_head *head) {
+    head->next = stack->next;
+}
+
+static inline void stack_move_init(struct stack_head *stack, struct stack_head *head) {
+    stack_move(stack, head);
+    INIT_STACK_HEAD(stack);
+}
 
 #endif

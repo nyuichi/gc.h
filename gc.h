@@ -19,8 +19,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 struct gc_state {
     struct list_head heap, *stage;
     struct list_head pinned, root;
-    struct stack_head scope;
-    struct gc_weak_head *weak_heads;
+    struct stack_head scope, weak_heads;
 };
 
 struct gc_head {
@@ -110,7 +109,7 @@ static inline void gc_protect(struct gc_state *gc, struct gc_head *head) {
 
 struct gc_weak_head {
     struct gc_head gc_head, *key;
-    struct gc_weak_head *next, **notify;
+    struct stack_head stack_head, *notify;
     const struct gc_object_type *type;
 };
 
@@ -121,8 +120,7 @@ struct gc_weak_head {
 static void gc_weak_head_mark(struct gc_state *gc, struct gc_head *head) {
     struct gc_weak_head *w = gc_entry(head, struct gc_weak_head, gc_head);
     if (gc_weak_head_expired(w)) return;
-    w->next = gc->weak_heads;
-    gc->weak_heads = w;
+    stack_push(&w->stack_head, &gc->weak_heads);
 }
 
 static void gc_weak_head_free(struct gc_state *gc, struct gc_head *head) {
@@ -130,7 +128,7 @@ static void gc_weak_head_free(struct gc_state *gc, struct gc_head *head) {
     w->type->free(gc, head);
 }
 
-static inline void INIT_GC_WEAK_HEAD(struct gc_state *gc, struct gc_weak_head *head, const struct gc_object_type *type, struct gc_head *key, struct gc_weak_head **notify) {
+static inline void INIT_GC_WEAK_HEAD(struct gc_state *gc, struct gc_weak_head *head, const struct gc_object_type *type, struct gc_head *key, struct stack_head *notify) {
     static const struct gc_object_type weak_head_type = { gc_weak_head_mark, gc_weak_head_free };
     head->key = key;
     head->type = type;
@@ -143,7 +141,7 @@ static inline void INIT_GC_WEAK_HEAD(struct gc_state *gc, struct gc_weak_head *h
 static void gc_run(struct gc_state *gc) {
     LIST_HEAD(stage);
     gc->stage = &stage;
-    gc->weak_heads = NULL;
+    INIT_STACK_HEAD(&gc->weak_heads);
     /* copy objects */
     struct gc_scope *scope;
     stack_for_each_entry(scope, &gc->scope, stack_head) {
@@ -162,20 +160,17 @@ static void gc_run(struct gc_state *gc) {
         if (gc_type(head)->mark) gc_type(head)->mark(gc, head);
     }
     /* deal with weak references */
-    if (gc->weak_heads != NULL) {
+    if (! stack_empty(&gc->weak_heads)) {
+        struct gc_weak_head *w, *nw;
         while (1) {
-            struct gc_weak_head *weak_heads = gc->weak_heads;
             struct list_head *prev = stage.prev;
-            gc->weak_heads = NULL;
-            for (struct gc_weak_head *w = weak_heads, *next; w != NULL; w = next) {
-                next = w->next;
-                if (w->key->type_mark & 1ul) {
-                    if (w->type->mark)
-                        w->type->mark(gc, &w->gc_head);
-                } else {
-                    w->next = gc->weak_heads;
-                    gc->weak_heads = w;
-                }
+            STACK_HEAD(weak_heads);
+            stack_move_init(&gc->weak_heads, &weak_heads);
+            stack_for_each_entry_safe (w, nw, &weak_heads, stack_head) {
+                if ((w->key->type_mark & 1ul) == 0)
+                    stack_push(&w->stack_head, &gc->weak_heads);
+                else if (w->type->mark)
+                    w->type->mark(gc, &w->gc_head);
             }
             if (prev == stage.prev)
                 break;
@@ -183,12 +178,10 @@ static void gc_run(struct gc_state *gc) {
                 if (gc_type(head)->mark) gc_type(head)->mark(gc, head);
             }
         }
-        for (struct gc_weak_head *w = gc->weak_heads; w != NULL; w = w->next) {
+        stack_for_each_entry (w, &gc->weak_heads, stack_head) {
             w->key = NULL;
-            if (w->notify) {
-                w->next = *w->notify;
-                *w->notify = w;
-            }
+            if (w->notify)
+                stack_push(&w->stack_head, w->notify);
         }
     }
     /* clean up */

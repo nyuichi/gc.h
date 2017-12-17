@@ -245,4 +245,28 @@ list_is_last(const struct list_head *list, const struct list_head *head)
   return list->next == head;
 }
 
+static void _list_sort(struct list_head *begin, struct list_head *end, int (*compar)(struct list_head *a, struct list_head *b)) {
+  if (begin->next == end || begin->next == end->prev)
+    return;
+  struct list_head *pivot_begin = begin->next, *pivot_end = pivot_begin;
+  struct list_head *p, *n;
+  list_for_each_range_safe (p, n, pivot_begin, end) {
+    int c = compar(p, pivot_begin);
+    if (c == 0) {
+      list_move(p, pivot_end);
+      pivot_end = p;
+    }
+    if (c < 0)
+      list_move_tail(p, pivot_begin);
+  }
+  if (begin != pivot_begin)
+    _list_sort(begin, pivot_begin, compar);
+  if (pivot_end != end)
+    _list_sort(pivot_end, end, compar);
+}
+
+static void list_sort(struct list_head *list, int (*compar)(struct list_head *a, struct list_head *b)) {
+  _list_sort(list, list, compar);
+}
+
 #endif

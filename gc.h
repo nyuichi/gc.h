@@ -30,7 +30,7 @@ struct gc_head {
 struct gc_object_type {
     void (*mark)(struct gc_state *, struct gc_head *);
     void (*free)(struct gc_state *, struct gc_head *);
-};
+} __attribute__((aligned(sizeof(long))));
 
 #define gc_entry(ptr, type, field) (typecheck(struct gc_head *, ptr), container_of(ptr, type, field))
 

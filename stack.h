@@ -37,6 +37,10 @@
 #undef typecheck
 #define typecheck(type,var) ({ typeof(var) *__tmp; __tmp = (type *) NULL; })
 
+// address_of(ptr, field) is equivalent to &ptr->field, except that address_of works correctly even when &ptr->field may be NULL.
+#undef address_of
+#define address_of(ptr,field) ((typeof(&(ptr)->field)) ((unsigned long) (ptr) + offsetof(typeof(*(ptr)), field)))
+
 struct stack_head {
     struct stack_head *next;
 };
@@ -68,12 +72,12 @@ static inline bool stack_empty(struct stack_head *stack) {
     for (p = (stack)->next; p; p = p->next)
 
 #define stack_for_each_entry(p,stack,field) \
-    for (p = stack_entry((stack)->next, typeof(*p), field); &p->field; p = stack_entry(p->field.next, typeof(*p), field))
+    for (p = stack_entry((stack)->next, typeof(*p), field); address_of(p, field); p = stack_entry(p->field.next, typeof(*p), field))
 
 #define stack_for_each_entry_safe(p,n,stack,field) \
-    for (p = stack_entry((stack)->next, typeof(*p), field), \
-         n = &p->field ? stack_entry(p->field.next, typeof(*n), field) : NULL; \
-         &p->field; p = n, n = &p->field ? stack_entry(p->field.next, typeof(*n), field) : NULL)
+    for (p = stack_entry((stack)->next, typeof(*p), field); \
+         address_of(p, field) && ((n = stack_entry(p->field.next, typeof(*n), field)), 1); \
+         p = n)
 
 #define stack_for_each_stack(p,stack) \
     for (p = (stack); p->next; p = p->next)

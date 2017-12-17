@@ -34,12 +34,14 @@ struct gc_object_type {
 
 #define gc_entry(ptr, type, field) (typecheck(struct gc_head *, ptr), container_of(ptr, type, field))
 
-#define gc_type(head) ((const struct gc_object_type *) ((head)->type_mark & ~1ul))
-
 static inline void INIT_GC_HEAD(struct gc_state *gc, struct gc_head *head, const struct gc_object_type *type) {
     INIT_LIST_HEAD(&head->list_head);
     head->type_mark = (unsigned long) type;
     list_add(&head->list_head, &gc->heap);
+}
+
+static inline const struct gc_object_type *gc_type(struct gc_head *head) {
+    return (const struct gc_object_type *) (head->type_mark & ~1ul);
 }
 
 static inline void gc_mark(struct gc_state *gc, struct gc_head *head) {
@@ -169,8 +171,8 @@ static void gc_run(struct gc_state *gc) {
             stack_for_each_entry_safe (w, nw, &weak_heads, stack_head) {
                 if ((w->key->type_mark & 1ul) == 0)
                     stack_push(&w->stack_head, &gc->weak_heads);
-                else if (w->type->mark)
-                    w->type->mark(gc, &w->gc_head);
+                else
+                    if (w->type->mark) w->type->mark(gc, &w->gc_head);
             }
             if (prev == stage.prev)
                 break;
@@ -178,7 +180,7 @@ static void gc_run(struct gc_state *gc) {
                 if (gc_type(head)->mark) gc_type(head)->mark(gc, head);
             }
         }
-        stack_for_each_entry (w, &gc->weak_heads, stack_head) {
+        stack_for_each_entry_safe (w, nw, &gc->weak_heads, stack_head) {
             w->key = NULL;
             if (w->notify)
                 stack_push(&w->stack_head, w->notify);
@@ -188,8 +190,8 @@ static void gc_run(struct gc_state *gc) {
     list_for_each_entry (head, &stage, list_head) {
         head->type_mark &= ~1ul;
     }
-    struct gc_head *next;
-    list_for_each_entry_safe (head, next, &gc->heap, list_head) {
+    struct gc_head *n;
+    list_for_each_entry_safe (head, n, &gc->heap, list_head) {
         gc_del(gc, head);
     }
     list_splice(&stage, &gc->heap);

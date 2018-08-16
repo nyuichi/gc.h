@@ -117,7 +117,9 @@ struct gc_weak_head {
 
 #define gc_weak_entry(ptr, type, field) (typecheck(struct gc_weak_head *, ptr), container_of(ptr, type, field))
 
-#define gc_weak_head_expired(head) ((head)->key == NULL)
+static inline bool gc_weak_head_expired(struct gc_weak_head *head) {
+    return head->key == NULL;
+}
 
 static void gc_weak_head_mark(struct gc_state *gc, struct gc_head *head) {
     struct gc_weak_head *w = gc_entry(head, struct gc_weak_head, gc_head);
